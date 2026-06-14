@@ -150,6 +150,7 @@ a.reset{color:var(--no);font-size:12px;text-decoration:underline;cursor:pointer}
     <button class="tab" data-t="texts">📖 Тексты</button>
     <button class="tab" data-t="defs">📚 Дефиниции</button>
     <button class="tab" data-t="quizlet">🧠 Quizlet</button>
+    <button class="tab" data-t="quizwrite">✍️ Quizlet писать</button>
   </div>
 </header>
 <div class="wrap">
@@ -229,6 +230,21 @@ a.reset{color:var(--no);font-size:12px;text-decoration:underline;cursor:pointer}
   <div id="qzArea"></div>
 </section>
 
+<!-- 5. QUIZLET ПИСАТЬ (только набор, без выбора) -->
+<section id="quizwrite">
+  <div class="kicker" style="margin:8px 0">Как Quizlet, но <b>только письмо</b> — без выбора из 4. Видишь перевод → пишешь слово. Раунды по 7. «Освоено» после верного набора; ошибся — слово вернётся в раунде.</div>
+  <div class="row" style="gap:6px">
+    <div class="chip lvchipW on" data-lvw="all">Все уровни</div>
+    <div class="chip lvchipW" data-lvw="easy">🟢 Легко</div>
+    <div class="chip lvchipW" data-lvw="medium">🟡 Средне</div>
+    <div class="chip lvchipW" data-lvw="hard">🔴 Сложно</div>
+    <div class="chip lvchipW" data-lvw="core">⭐ Ядро</div>
+  </div>
+  <div class="bar"><i id="qwProg"></i></div>
+  <div class="meta"><span id="qwCnt"></span><a class="reset" id="qwReset">начать заново</a></div>
+  <div id="qwArea"></div>
+</section>
+
 </div>
 
 <script>
@@ -251,6 +267,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('section').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); $('#'+b.dataset.t).classList.add('on');
   if(b.dataset.t==='quizlet') renderQuiz();
+  if(b.dataset.t==='quizwrite') renderQuizWrite();
 });
 
 /* ---------- topic chips (words) ---------- */
@@ -753,6 +770,91 @@ document.querySelectorAll('#quizlet .chip[data-lvq]').forEach(c=>c.onclick=()=>{
   c.classList.add('on'); qLevel=c.dataset.lvq; qKey=null; renderQuiz();
 });
 $('#qReset').onclick=()=>{ if(confirm('Сбросить прогресс Quizlet по этому фильтру?')){qPoolList().forEach(t=>{const s=P[t.term];if(s){s.qm=false;s.qseen=false;}});save();qKey=null;renderQuiz();} };
+
+/* ---------- 5. QUIZLET ПИСАТЬ (только набор, без выбора) ---------- */
+let qwLevel='all', qwKey=null, qwQueue=[], qwRound=0, qwBusy=false;
+function qwPoolList(){
+  let a=DATA.terms.slice();
+  if(qwLevel==='core') a=a.filter(t=>t.core);
+  else if(qwLevel!=='all') a=a.filter(t=>t.level===qwLevel);
+  return a;
+}
+function qwStat(){
+  const a=qwPoolList(); let mast=0,still=0,ns=0;
+  a.forEach(t=>{const s=P[t.term]; if(s&&s.qwm)mast++; else if(s&&s.qwseen)still++; else ns++;});
+  return {total:a.length,mast,still,ns};
+}
+function qwBuildRound(){
+  const a=qwPoolList();
+  const pending=a.filter(t=>!(P[t.term]&&P[t.term].qwm));
+  if(!pending.length){qwQueue=[];return false;}
+  qwQueue=pending.slice(0,QSIZE).map(t=>({t}));   // только набор — без выбора
+  qwRound++; return true;
+}
+function qwInsert(item,minGap){
+  const pos=Math.min(qwQueue.length,(minGap||2)+Math.floor(Math.random()*3));
+  qwQueue.splice(pos,0,item);
+}
+function qwProgress(){
+  const st=qwStat(); const pct=st.total?Math.round(st.mast/st.total*100):0;
+  $('#qwProg').style.width=pct+'%';
+  $('#qwCnt').textContent=`освоено ${st.mast} / ${st.total} · учим ${st.still} · новых ${st.ns}`;
+}
+function renderQuizWrite(){
+  if(qwLevel!==qwKey){qwKey=qwLevel; qwRound=0; qwQueue=[]; qwBuildRound();}
+  qwProgress();
+  const area=$('#qwArea');
+  if(!qwQueue.length){
+    const st=qwStat();
+    if(st.still===0&&st.ns===0){
+      area.innerHTML=`<div class="q center"><div class="big">🏁</div><div>Всё написано верно!</div>
+        <button class="btn p" id="qwAgain" style="margin-top:14px">Пройти заново</button></div>`;
+      $('#qwAgain').onclick=()=>{qwPoolList().forEach(t=>{const s=P[t.term];if(s){s.qwm=false;s.qwseen=false;}});save();qwKey=null;renderQuizWrite();};
+      return;
+    }
+    area.innerHTML=`<div class="q center"><div class="big">🎉</div><div>Раунд ${qwRound} пройден!</div>
+      <div class="note" style="margin-top:6px">освоено ${st.mast} из ${st.total} · осталось ${st.still+st.ns}</div>
+      <button class="btn p" id="qwNext" style="margin-top:14px">Следующий раунд (7 слов) →</button></div>`;
+    $('#qwNext').onclick=()=>{qwBuildRound();renderQuizWrite();};
+    return;
+  }
+  const t=qwQueue[0].t, s=qState(t); s.qwseen=true;
+  area.innerHTML=`<div class="q">
+    <div class="qlabel">✍️ Раунд ${qwRound} · напиши слово · ${LVDOT[t.level]||''}</div>
+    <div class="qtext">${esc(t.ru||'—')}</div>
+    ${t.def?`<div class="note" style="margin-top:4px">💬 ${esc(t.def)}</div>`:''}
+    <input class="win" id="qwIn" placeholder="напиши по-английски…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div class="wfb" id="qwFb"></div>
+    <div class="fcbtns"><button class="btn p" id="qwChk">Проверить</button>
+      <button class="btn sm" id="qwHear">🔊</button></div></div>`;
+  const inp=$('#qwIn'); try{inp.focus();}catch(e){}
+  function master(){s.qwm=true;s.known=true;save();$('#qwFb').innerHTML='<span class="good">✓ Освоено!</span> '+esc(t.term);
+    qwQueue.shift(); qwBusy=true; setTimeout(()=>{qwBusy=false;renderQuizWrite();},700);}
+  function check(){
+    if(qwBusy)return; const val=inp.value; if(!val.trim())return;
+    const exact=wAccept(t.term,val);
+    const close=!exact && lev(normW(val),normW(t.term))<=1 && normW(t.term).length>3;
+    if(exact){master();return;}
+    if(close){$('#qwFb').innerHTML='<span class="good">✓ почти — засчитано:</span> '+esc(t.term);master();return;}
+    s.wrong=(s.wrong||0)+1; save(); inp.disabled=true; $('#qwChk').style.display='none';
+    const conf=DATA.terms.find(x=>x.term!==t.term && wAccept(x.term,val));
+    $('#qwFb').innerHTML=`<span class="bad">✗ ты написал: ${esc(val)}</span><br>правильно: <span class="corr">${esc(t.term)}</span>`
+      + (conf?`<br><span style="color:var(--warn);font-size:13px">⚠ «${esc(val)}» — это «${esc(conf.term)}»${conf.ru?' ('+esc(conf.ru)+')':''}</span>`:'');
+    const row=document.createElement('div'); row.className='fcbtns'; row.style.marginTop='10px';
+    row.innerHTML=`<button class="btn sm gold" id="qwOvr">✅ я был прав, засчитать</button>
+      <button class="btn sm no" id="qwRetry">🔁 ещё раз</button>`;
+    area.querySelector('.q').appendChild(row);
+    $('#qwOvr').onclick=()=>{master();};
+    $('#qwRetry').onclick=()=>{qwQueue.shift();qwInsert({t},2);renderQuizWrite();};
+  }
+  $('#qwChk').onclick=check; inp.onkeydown=e=>{if(e.key==='Enter')check();};
+  $('#qwHear').onclick=()=>speak(t.term);
+}
+document.querySelectorAll('#quizwrite .chip[data-lvw]').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('#quizwrite .chip[data-lvw]').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on'); qwLevel=c.dataset.lvw; qwKey=null; renderQuizWrite();
+});
+$('#qwReset').onclick=()=>{ if(confirm('Сбросить прогресс «Quizlet писать» по этому фильтру?')){qwPoolList().forEach(t=>{const s=P[t.term];if(s){s.qwm=false;s.qwseen=false;}});save();qwKey=null;renderQuizWrite();} };
 
 render();
 renderDefs();
