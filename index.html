@@ -65,6 +65,14 @@ input.search::placeholder{color:#6b7da0}
 .ru{font-size:20px;font-weight:700;color:var(--gold);margin-bottom:8px}
 .def{font-size:14.5px;color:var(--tx);opacity:.95}
 .defru{font-size:13.5px;color:var(--gold);opacity:.85;margin-top:7px;padding-top:7px;border-top:1px dashed var(--line)}
+.jrow{display:flex;justify-content:space-between;align-items:center;margin:12px 2px 6px;font-size:12px;color:var(--mut);font-weight:700}
+.jin{width:56px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--tx);font-size:15px;font-weight:800;text-align:center}
+.jin:focus{outline:none;border-color:var(--ac)}
+.cardbox{border:1px solid var(--line);border-radius:18px;padding:24px 20px;background:linear-gradient(160deg,var(--card),var(--bg2));text-align:center;margin-bottom:10px;min-height:200px;display:flex;flex-direction:column;justify-content:center}
+.cardbox .term{font-size:28px;font-weight:800;line-height:1.25}
+.cardbox .ru{font-size:20px;font-weight:700;color:var(--gold);margin:10px 0 0}
+.cardbox .def{font-size:14.5px;color:var(--tx);opacity:.95;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.cardbox .defru{font-size:13.5px;color:var(--gold);opacity:.85;margin-top:8px;border-top:0;padding-top:0}
 .win{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);color:var(--tx);font-size:19px;font-weight:700;text-align:center;margin:14px 0 4px}
 .win:focus{outline:none;border-color:var(--ac)}
 .wfb{font-size:15px;min-height:22px;text-align:center;margin:6px 0}
@@ -316,7 +324,7 @@ function pool(){
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 /* ---------- render dispatcher ---------- */
-let idx=0;
+let idx=(P&&typeof P.__cardIdx==='number')?P.__cardIdx:0;
 function render(){
   const a=pool();
   const learned=a.filter(t=>P[t.term]&&P[t.term].known).length;
@@ -333,42 +341,40 @@ function render(){
 
 /* ---------- FLASHCARDS ---------- */
 function renderCards(a){
-  if(idx>=a.length)idx=0;
-  const t=a[idx]; const s=st(t); s.seen++;
+  if(idx>=a.length)idx=0; if(idx<0)idx=0;
+  const t=a[idx]; const s=st(t); s.seen++; P.__cardIdx=idx; save();
   const tp=TOPICS[t.topic]||{icon:'',name:t.topic};
   $('#wordArea').innerHTML=`
-   <div class="fc" id="fc">
-     <div class="inner">
-       <div class="face front"><div class="tg">${tp.icon} ${esc(tp.name)} · ${idx+1}/${a.length}</div>
-         <div style="position:absolute;top:12px;right:14px;font-size:13px">${LVDOT[t.level]||''}</div>
-         <div class="term">${esc(t.term)}</div>
-         <div class="hint">нажми — перевод, дефиниция и её перевод</div></div>
-       <div class="face back"><div class="tg">${esc(t.term)}</div>
-         <div class="ru">${esc(t.ru||'—')}</div>
-         <div class="def">${esc(t.def||'(дефиниции нет — учим перевод)')}</div>
-         ${t.def_ru?`<div class="defru">${esc(t.def_ru)}</div>`:''}</div>
-     </div>
+   <div class="jrow">
+     <span>${tp.icon} ${esc(tp.name)} ${LVDOT[t.level]||''}</span>
+     <span>№ <input id="cardJump" class="jin" inputmode="numeric" value="${idx+1}"> / ${a.length}</span>
+   </div>
+   <div class="cardbox">
+     <div class="term">${esc(t.term)}</div>
+     <div class="ru">${esc(t.ru||'—')}</div>
+     ${t.def?`<div class="def">${esc(t.def)}</div>`:''}
+     ${t.def_ru?`<div class="defru">${esc(t.def_ru)}</div>`:''}
    </div>
    <div class="fcbtns">
-     <button class="btn sm" id="prev">⟵</button>
-     <button class="btn sm" id="shuf">🔀</button>
+     <button class="btn sm" id="prev">⟵ назад</button>
      <button class="btn sm" id="speak">🔊</button>
-     <button class="btn sm" id="next">⟶</button>
+     <button class="btn sm" id="next">вперёд ⟶</button>
    </div>
    <div class="fcbtns">
      <button class="btn sm ${s.known?'ok':''}" id="mkW">📘 слово${s.known?' ✓':''}</button>
      <button class="btn sm ${s.dknown?'ok':''}" id="mkD">📖 дефиницию${s.dknown?' ✓':''}</button>
      <button class="btn sm ${(s.known&&s.dknown)?'ok':'gold'}" id="mkB">✅ всё</button>
    </div>`;
-  const fc=$('#fc'); fc.onclick=()=>fc.classList.toggle('flip');
-  const mark=(fn)=>e=>{e.stopPropagation();const f=fc.classList.contains('flip');fn();save();render();if(f)$('#fc').classList.add('flip');};
-  $('#prev').onclick=e=>{e.stopPropagation();idx=(idx-1+a.length)%a.length;render();};
-  $('#next').onclick=e=>{e.stopPropagation();idx=(idx+1)%a.length;render();};
-  $('#mkW').onclick=mark(()=>{s.known=!s.known;});
-  $('#mkD').onclick=mark(()=>{s.dknown=!s.dknown;});
-  $('#mkB').onclick=mark(()=>{const v=!(s.known&&s.dknown);s.known=v;s.dknown=v;});
-  $('#shuf').onclick=e=>{e.stopPropagation();DATA.terms=shuffle(DATA.terms);idx=0;render();};
-  $('#speak').onclick=e=>{e.stopPropagation();speak(t.term);};
+  $('#prev').onclick=()=>{idx=(idx-1+a.length)%a.length;render();};
+  $('#next').onclick=()=>{idx=(idx+1)%a.length;render();};
+  $('#speak').onclick=()=>speak(t.term);
+  $('#mkW').onclick=()=>{s.known=!s.known;save();render();};
+  $('#mkD').onclick=()=>{s.dknown=!s.dknown;save();render();};
+  $('#mkB').onclick=()=>{const v=!(s.known&&s.dknown);s.known=v;s.dknown=v;save();render();};
+  const jin=$('#cardJump');
+  const jump=()=>{let n=parseInt(jin.value,10); if(isNaN(n)){jin.value=idx+1;return;} n=Math.max(1,Math.min(a.length,n)); idx=n-1; render();};
+  jin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();jin.blur();jump();}};
+  jin.onchange=jump;
 }
 function speak(txt){try{const u=new SpeechSynthesisUtterance(txt);u.lang='en-US';u.rate=.9;speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){}}
 
